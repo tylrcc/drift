@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import { getProduct, PRODUCTS } from "@/lib/products/catalog";
 import { formatPct } from "@/lib/utils";
@@ -38,15 +39,26 @@ export default async function ProductDetailPage({
       </Link>
       <div className="mt-6 grid gap-10 lg:grid-cols-[1.3fr_0.9fr]">
         <div>
-          <div className="mb-3 flex flex-wrap items-center gap-3">
-            {product.badge ? (
-              <span className="rounded-full bg-black/[0.04] px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-[#6e6e73]">
-                {product.badge}
-              </span>
-            ) : null}
-            <h1 className="display text-5xl">{product.name}</h1>
+          <div className="mb-5 flex flex-wrap items-center gap-4">
+            <Image
+              src={product.avatar}
+              alt={`${product.name} portrait`}
+              width={72}
+              height={72}
+              className="rounded-full shadow-md ring-4 ring-white"
+            />
+            <div>
+              <div className="mb-2 flex flex-wrap items-center gap-3">
+                {product.badge ? (
+                  <span className="rounded-full bg-black/[0.04] px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide text-[#6e6e73]">
+                    {product.badge}
+                  </span>
+                ) : null}
+                <h1 className="display text-5xl">{product.name}</h1>
+              </div>
+              <p className="text-lg text-[#6e6e73]">{product.tagline}</p>
+            </div>
           </div>
-          <p className="mt-4 text-lg text-[#6e6e73]">{product.tagline}</p>
           <p className="mt-6 whitespace-pre-line text-[15px] leading-relaxed text-[#1d1d1f]">
             {product.longDescription}
           </p>

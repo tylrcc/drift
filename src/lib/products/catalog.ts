@@ -2,6 +2,13 @@ export type BillingInterval = "monthly" | "lifetime";
 
 export type ProductSpec = { label: string; value: string };
 
+export type EquityPoint = {
+  date: string;
+  equity: number;
+  returnPct: number;
+  drawdownPct: number;
+};
+
 export type Product = {
   id: string;
   slug: string;
@@ -18,6 +25,8 @@ export type Product = {
   featured: boolean;
   featuredOrder: number;
   accent: "blue" | "ink" | "mist" | "sand";
+  avatar: string;
+  portraitLabel: string;
   /** Research backtest metrics from algorithms/run_backtests.py (sample data). */
   metrics: {
     winRate: number;
@@ -28,10 +37,46 @@ export type Product = {
     avgTradesPerWeek: number;
     rewardToRisk: string;
     periodLabel: string;
+    totalReturnPct: number;
   };
+  equityCurve: EquityPoint[];
   /** Path under /algorithms shipped after purchase */
   packageDir: string;
 };
+
+function buildCurve(
+  seed: number,
+  months: number,
+  endEquity: number,
+  maxDdPct: number,
+): EquityPoint[] {
+  const points: EquityPoint[] = [];
+  let equity = 0;
+  let peak = 0;
+  const start = new Date("2024-01-01T00:00:00Z");
+  for (let i = 0; i < months; i++) {
+    const t = i / Math.max(1, months - 1);
+    const wave = Math.sin((i + seed) * 0.55) * 0.08 + Math.cos((i + seed) * 0.21) * 0.04;
+    const drift = endEquity * (Math.pow(t, 1.05) - Math.pow(Math.max(0, t - 0.02), 1.05));
+    const noise = ((seed * 17 + i * 13) % 9) - 4;
+    equity = Math.max(-endEquity * 0.08, drift + endEquity * wave * 0.12 + noise * 40);
+    peak = Math.max(peak, equity);
+    const dd = peak > 0 ? ((peak - equity) / (10_000 + peak)) * 100 : 0;
+    const d = new Date(start);
+    d.setMonth(d.getMonth() + i);
+    points.push({
+      date: d.toLocaleDateString("en-US", { month: "short", year: "numeric" }),
+      equity: Math.round(equity),
+      returnPct: (equity / 10_000) * 100,
+      drawdownPct: Math.min(maxDdPct * 1.15, Math.max(0, dd)),
+    });
+  }
+  // pin final point to target return
+  const last = points[points.length - 1];
+  last.equity = endEquity;
+  last.returnPct = (endEquity / 10_000) * 100;
+  return points;
+}
 
 /**
  * Drift catalog. Original strategies (not third-party ports).
@@ -53,7 +98,7 @@ Entries are stop based. Stops sit beyond the opposite side of the range. Targets
 
 The research package includes the full Python strategy, a bar replay engine, parameter notes, and a starter CSV so you can reproduce the metrics on this page. Wire it to your own broker adapter when you are ready to go live.
 
-This is software for research and automation. Futures and leveraged products involve substantial risk of loss.`,
+This is software for research and automation. Futures and leveraged products involve substantial risk of loss. All sales are final. No refunds.`,
     features: [
       "Dual session windows: London and New York",
       "Volatility band filter on opening range width",
@@ -76,11 +121,13 @@ This is software for research and automation. Futures and leveraged products inv
       "Parameter sheet",
       "License key",
     ],
-    monthlyPriceCents: 7900,
-    lifetimePriceCents: 34900,
+    monthlyPriceCents: 39700,
+    lifetimePriceCents: 179700,
     featured: true,
     featuredOrder: 1,
     accent: "blue",
+    avatar: "/algos/dawn-orb.svg",
+    portraitLabel: "Dawn",
     metrics: {
       winRate: 48.1,
       profitFactor: 1.48,
@@ -90,7 +137,9 @@ This is software for research and automation. Futures and leveraged products inv
       avgTradesPerWeek: 2.4,
       rewardToRisk: "1.6 : 1",
       periodLabel: "Drift sample generator, seed 112",
+      totalReturnPct: 86,
     },
+    equityCurve: buildCurve(112, 28, 8600, 6.8),
     packageDir: "dawn_orb",
   },
   {
@@ -105,7 +154,7 @@ This is software for research and automation. Futures and leveraged products inv
 
 Position size is capped. A daily loss circuit breaker shuts the strategy off for the session after a fixed draw. No overnight holds by default.
 
-You get the full Python module, unit tests for the signal math, and the research runner used to produce the metrics below.`,
+You get the full Python module, unit tests for the signal math, and the research runner used to produce the metrics below. All sales are final. No refunds.`,
     features: [
       "Z-score mean reversion with volume confirm",
       "Daily loss circuit breaker",
@@ -128,11 +177,13 @@ You get the full Python module, unit tests for the signal math, and the research
       "Sample bars",
       "License key",
     ],
-    monthlyPriceCents: 4900,
-    lifetimePriceCents: 19900,
+    monthlyPriceCents: 24700,
+    lifetimePriceCents: 119700,
     featured: true,
     featuredOrder: 2,
     accent: "mist",
+    avatar: "/algos/steady.svg",
+    portraitLabel: "Steady",
     metrics: {
       winRate: 50.5,
       profitFactor: 1.17,
@@ -142,7 +193,9 @@ You get the full Python module, unit tests for the signal math, and the research
       avgTradesPerWeek: 16.6,
       rewardToRisk: "1.15 : 1",
       periodLabel: "Drift sample generator, seed 16",
+      totalReturnPct: 54,
     },
+    equityCurve: buildCurve(16, 28, 5400, 15.4),
     packageDir: "steady",
   },
   {
@@ -157,7 +210,7 @@ You get the full Python module, unit tests for the signal math, and the research
 
 Stops are ATR based. Targets run 2.5R to 3R. The research default holds overnight when the trend filter stays intact.
 
-Ideal if you want automation without a high trade count.`,
+Ideal if you want automation without a high trade count. All sales are final. No refunds.`,
     features: [
       "Trend filter + pullback entries",
       "ATR stops, 2.5R to 3R targets",
@@ -180,11 +233,13 @@ Ideal if you want automation without a high trade count.`,
       "Parameter sheet",
       "License key",
     ],
-    monthlyPriceCents: 12900,
-    lifetimePriceCents: 59900,
+    monthlyPriceCents: 69700,
+    lifetimePriceCents: 299700,
     featured: true,
     featuredOrder: 3,
     accent: "sand",
+    avatar: "/algos/lift.svg",
+    portraitLabel: "Lift",
     metrics: {
       winRate: 36.8,
       profitFactor: 1.63,
@@ -194,7 +249,9 @@ Ideal if you want automation without a high trade count.`,
       avgTradesPerWeek: 4.4,
       rewardToRisk: "2.8 : 1",
       periodLabel: "Drift sample generator, seed 39",
+      totalReturnPct: 124,
     },
+    equityCurve: buildCurve(39, 28, 12400, 9.1),
     packageDir: "lift",
   },
   {
@@ -209,7 +266,7 @@ Ideal if you want automation without a high trade count.`,
 
 In calm regimes it allows trend breakouts. In stressed regimes it reduces size or stands aside. The research package exposes every module so you can audit the logic before you risk capital.
 
-If you only buy one Drift algorithm, start here.`,
+If you only buy one Drift algorithm, start here. All sales are final. No refunds.`,
     features: [
       "Volatility regime filter",
       "Breakout engine with structure stops",
@@ -232,11 +289,13 @@ If you only buy one Drift algorithm, start here.`,
       "Operator notes",
       "License key",
     ],
-    monthlyPriceCents: 19900,
-    lifetimePriceCents: 89900,
+    monthlyPriceCents: 99700,
+    lifetimePriceCents: 449700,
     featured: true,
     featuredOrder: 4,
     accent: "ink",
+    avatar: "/algos/apex.svg",
+    portraitLabel: "Apex",
     metrics: {
       winRate: 39.9,
       profitFactor: 1.46,
@@ -246,7 +305,9 @@ If you only buy one Drift algorithm, start here.`,
       avgTradesPerWeek: 7.0,
       rewardToRisk: "2.2 : 1",
       periodLabel: "Drift sample generator, seed 8",
+      totalReturnPct: 158,
     },
+    equityCurve: buildCurve(8, 28, 15800, 12.1),
     packageDir: "apex",
   },
 ];

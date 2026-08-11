@@ -1,10 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { motion, useReducedMotion } from "framer-motion";
 import type { Product } from "@/lib/products/catalog";
-import { formatPct, formatUsd } from "@/lib/utils";
-import { cn } from "@/lib/utils";
+import { formatPct, formatUsd, cn } from "@/lib/utils";
 
 const accents: Record<Product["accent"], string> = {
   blue: "from-[#e8f1fc] to-white",
@@ -21,10 +21,24 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, amount: 0.25 }}
       transition={{ duration: 0.55, delay: index * 0.06 }}
-      whileHover={reduce ? undefined : { y: -4 }}
+      whileHover={reduce ? undefined : { y: -6 }}
       className="panel group overflow-hidden"
     >
-      <div className={cn("h-28 bg-gradient-to-br", accents[product.accent])} />
+      <div className={cn("relative h-36 bg-gradient-to-br", accents[product.accent])}>
+        <motion.div
+          className="absolute inset-0 flex items-center justify-center"
+          whileHover={reduce ? undefined : { scale: 1.04 }}
+          transition={{ type: "spring", stiffness: 260, damping: 18 }}
+        >
+          <Image
+            src={product.avatar}
+            alt={`${product.name} portrait`}
+            width={96}
+            height={96}
+            className="rounded-full shadow-[0_12px_30px_rgba(29,29,31,0.16)] ring-4 ring-white/70"
+          />
+        </motion.div>
+      </div>
       <div className="p-6">
         <div className="mb-3 flex items-center justify-between gap-3">
           <h3 className="text-xl font-medium tracking-tight">{product.name}</h3>

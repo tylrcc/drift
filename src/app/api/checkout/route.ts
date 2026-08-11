@@ -17,13 +17,24 @@ const bodySchema = z.object({
   productSlug: z.string().min(1),
   interval: z.enum(["monthly", "lifetime"]),
   email: z.string().email(),
+  acknowledgements: z.object({
+    risk: z.literal(true),
+    terms: z.literal(true),
+    noRefunds: z.literal(true),
+  }),
 });
 
 export async function POST(req: Request) {
   const json = await req.json().catch(() => null);
   const parsed = bodySchema.safeParse(json);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid checkout payload" }, { status: 400 });
+    return NextResponse.json(
+      {
+        error:
+          "Checkout requires accepting risk disclosure, terms, and the no-refund policy.",
+      },
+      { status: 400 },
+    );
   }
 
   const { productSlug, interval, email } = parsed.data;
