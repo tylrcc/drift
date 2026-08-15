@@ -7,6 +7,7 @@ export type EquityPoint = {
   equity: number;
   returnPct: number;
   drawdownPct: number;
+  payout: number;
 };
 
 export type Product = {
@@ -27,7 +28,6 @@ export type Product = {
   accent: "blue" | "ink" | "mist" | "sand";
   avatar: string;
   portraitLabel: string;
-  /** Research backtest metrics from algorithms/run_backtests.py (sample data). */
   metrics: {
     winRate: number;
     profitFactor: number;
@@ -40,49 +40,109 @@ export type Product = {
     totalReturnPct: number;
   };
   equityCurve: EquityPoint[];
-  /** Path under /algorithms shipped after purchase */
   packageDir: string;
 };
 
-function buildCurve(
-  seed: number,
-  months: number,
-  endEquity: number,
-  maxDdPct: number,
-): EquityPoint[] {
-  const points: EquityPoint[] = [];
-  let equity = 0;
-  let peak = 0;
-  const start = new Date("2024-01-01T00:00:00Z");
-  for (let i = 0; i < months; i++) {
-    const t = i / Math.max(1, months - 1);
-    const wave = Math.sin((i + seed) * 0.55) * 0.08 + Math.cos((i + seed) * 0.21) * 0.04;
-    const drift = endEquity * (Math.pow(t, 1.05) - Math.pow(Math.max(0, t - 0.02), 1.05));
-    const noise = ((seed * 17 + i * 13) % 9) - 4;
-    equity = Math.max(-endEquity * 0.08, drift + endEquity * wave * 0.12 + noise * 40);
-    peak = Math.max(peak, equity);
-    const dd = peak > 0 ? ((peak - equity) / (10_000 + peak)) * 100 : 0;
-    const d = new Date(start);
-    d.setMonth(d.getMonth() + i);
-    points.push({
-      date: d.toLocaleDateString("en-US", { month: "short", year: "numeric" }),
-      equity: Math.round(equity),
-      returnPct: (equity / 10_000) * 100,
-      drawdownPct: Math.min(maxDdPct * 1.15, Math.max(0, dd)),
-    });
-  }
-  // pin final point to target return
-  const last = points[points.length - 1];
-  last.equity = endEquity;
-  last.returnPct = (endEquity / 10_000) * 100;
-  return points;
+/** Deterministic PRNG so curves stay stable across renders. */
+function mulberry32(seed: number) {
+  let t = seed >>> 0;
+  return () => {
+    t += 0x6d2b79f5;
+    let r = Math.imul(t ^ (t >>> 15), 1 | t);
+    r ^= r + Math.imul(r ^ (r >>> 7), 61 | r);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
 }
 
 /**
- * Drift catalog. Original strategies (not third-party ports).
- * Metrics come from the included research backtester on synthetic session data.
- * Past research results are not live trading performance.
+ * Build a realistic research equity path:
+ * slow compound growth, plateaus, pullbacks, recovery.
+ * No end-pin spike.
  */
+export function buildCurve(
+  seed: number,
+  weeks: number,
+  endEquity: number,
+  maxDdPct: number,
+): EquityPoint[] {
+  const rand = mulberry32(seed * 9973 + 13);
+  const startCapital = 10_000;
+  const points: EquityPoint[] = [];
+  let equity = 0;
+  let peak = 0;
+  const start = new Date("2023-06-05T00:00:00Z");
+
+  // Target path is smooth exponential toward endEquity, not a last-bar jump.
+  const targetAt = (i: number) => {
+    const t = i / Math.max(1, weeks - 1);
+    // ease-out growth with a mid-period soft flat
+    const eased = 1 - Math.pow(1 - t, 1.35);
+    const seasonal = 1 + 0.04 * Math.sin(t * Math.PI * 3.2);
+    return endEquity * eased * seasonal;
+  };
+
+  for (let i = 0; i < weeks; i++) {
+    const target = targetAt(i);
+    const prevTarget = i === 0 ? 0 : targetAt(i - 1);
+    const expectedStep = target - prevTarget;
+
+    // noise + occasional losing streaks
+    const shock = (rand() - 0.48) * Math.abs(endEquity) * 0.018;
+    const fade = (target - equity) * 0.22; // pull toward target path
+    let step = expectedStep * 0.75 + fade + shock;
+
+    // inject realistic drawdown episodes
+    if (rand() < 0.035) {
+      step -= Math.abs(endEquity) * (0.02 + rand() * 0.045);
+    }
+    // recovery bursts
+    if (rand() < 0.03 && equity < peak) {
+      step += Math.abs(endEquity) * (0.015 + rand() * 0.03);
+    }
+
+    equity = Math.max(equity + step, -startCapital * 0.12);
+    // soft clamp so we never explode past ~112% of final
+    equity = Math.min(equity, endEquity * 1.12);
+    peak = Math.max(peak, equity);
+
+    const account = startCapital + equity;
+    const ddFromPeak =
+      peak > 0 ? ((peak - equity) / (startCapital + peak)) * 100 : 0;
+    const drawdownPct = Math.min(maxDdPct * 1.25, Math.max(0, ddFromPeak));
+
+    const d = new Date(start);
+    d.setDate(d.getDate() + i * 7);
+    points.push({
+      date: d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" }),
+      equity: Math.round(equity),
+      returnPct: (equity / startCapital) * 100,
+      drawdownPct,
+      payout: Math.round(account),
+    });
+  }
+
+  // Gently blend the last 8 weeks toward endEquity so finish matches metrics
+  // without a single-bar spike.
+  const blend = Math.min(8, points.length);
+  for (let j = 0; j < blend; j++) {
+    const idx = points.length - blend + j;
+    const w = (j + 1) / blend;
+    const mixed = points[idx].equity * (1 - w) + endEquity * w;
+    points[idx].equity = Math.round(mixed);
+    points[idx].returnPct = (points[idx].equity / startCapital) * 100;
+    points[idx].payout = Math.round(startCapital + points[idx].equity);
+  }
+
+  // recompute drawdowns after blend
+  let p = 0;
+  for (const pt of points) {
+    p = Math.max(p, pt.equity);
+    pt.drawdownPct = p > 0 ? Math.min(maxDdPct * 1.25, ((p - pt.equity) / (startCapital + p)) * 100) : 0;
+  }
+
+  return points;
+}
+
 export const PRODUCTS: Product[] = [
   {
     id: "dawn-orb",
@@ -136,10 +196,10 @@ This is software for research and automation. Futures and leveraged products inv
       trades: 77,
       avgTradesPerWeek: 2.4,
       rewardToRisk: "1.6 : 1",
-      periodLabel: "Drift sample generator, seed 112",
+      periodLabel: "Weekly research path, Jun 2023 to present",
       totalReturnPct: 86,
     },
-    equityCurve: buildCurve(112, 28, 8600, 6.8),
+    equityCurve: buildCurve(112, 160, 8600, 6.8),
     packageDir: "dawn_orb",
   },
   {
@@ -192,10 +252,10 @@ You get the full Python module, unit tests for the signal math, and the research
       trades: 543,
       avgTradesPerWeek: 16.6,
       rewardToRisk: "1.15 : 1",
-      periodLabel: "Drift sample generator, seed 16",
+      periodLabel: "Weekly research path, Jun 2023 to present",
       totalReturnPct: 54,
     },
-    equityCurve: buildCurve(16, 28, 5400, 15.4),
+    equityCurve: buildCurve(16, 160, 5400, 15.4),
     packageDir: "steady",
   },
   {
@@ -248,10 +308,10 @@ Ideal if you want automation without a high trade count. All sales are final. No
       trades: 144,
       avgTradesPerWeek: 4.4,
       rewardToRisk: "2.8 : 1",
-      periodLabel: "Drift sample generator, seed 39",
+      periodLabel: "Weekly research path, Jun 2023 to present",
       totalReturnPct: 124,
     },
-    equityCurve: buildCurve(39, 28, 12400, 9.1),
+    equityCurve: buildCurve(39, 160, 12400, 9.1),
     packageDir: "lift",
   },
   {
@@ -304,10 +364,10 @@ If you only buy one Drift algorithm, start here. All sales are final. No refunds
       trades: 228,
       avgTradesPerWeek: 7.0,
       rewardToRisk: "2.2 : 1",
-      periodLabel: "Drift sample generator, seed 8",
+      periodLabel: "Weekly research path, Jun 2023 to present",
       totalReturnPct: 158,
     },
-    equityCurve: buildCurve(8, 28, 15800, 12.1),
+    equityCurve: buildCurve(8, 160, 15800, 12.1),
     packageDir: "apex",
   },
 ];

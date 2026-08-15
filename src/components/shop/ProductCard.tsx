@@ -15,6 +15,21 @@ const accents: Record<Product["accent"], string> = {
 
 export function ProductCard({ product, index = 0 }: { product: Product; index?: number }) {
   const reduce = useReducedMotion();
+  const spark = product.equityCurve.filter((_, i) => i % 4 === 0);
+  const vals = spark.map((p) => p.equity);
+  const min = Math.min(...vals);
+  const max = Math.max(...vals);
+  const span = max - min || 1;
+  const w = 220;
+  const h = 56;
+  const path = spark
+    .map((p, i) => {
+      const x = (i / Math.max(1, spark.length - 1)) * w;
+      const y = h - ((p.equity - min) / span) * (h - 8) - 4;
+      return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(" ");
+
   return (
     <motion.article
       initial={reduce ? false : { opacity: 0, y: 20 }}
@@ -49,7 +64,12 @@ export function ProductCard({ product, index = 0 }: { product: Product; index?: 
           ) : null}
         </div>
         <p className="min-h-[3rem] text-sm leading-relaxed text-[#6e6e73]">{product.tagline}</p>
-        <div className="mt-5 grid grid-cols-3 gap-3 border-t border-black/5 pt-5 text-center">
+
+        <svg viewBox={`0 0 ${w} ${h}`} className="mt-4 h-14 w-full" aria-hidden>
+          <path d={path} fill="none" stroke="#0071e3" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+
+        <div className="mt-4 grid grid-cols-3 gap-3 border-t border-black/5 pt-5 text-center">
           <Metric label="Win rate" value={formatPct(product.metrics.winRate)} />
           <Metric label="Profit factor" value={product.metrics.profitFactor.toFixed(2)} />
           <Metric label="Max DD" value={formatPct(product.metrics.maxDrawdownPct)} />

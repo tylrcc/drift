@@ -47,8 +47,8 @@ export function Hero() {
           className="mt-5 max-w-xl text-lg leading-relaxed text-[#6e6e73] md:text-xl"
         >
           Original trading algorithms with full source, research curves you can scrub, and
-          instant license delivery. Hover the blue equity path to read return and drawdown at
-          every point.
+          instant license delivery. Drag across the blue path to read return, account value,
+          and drawdown week by week.
         </motion.p>
         <motion.div
           initial={reduce ? false : { opacity: 0, y: 14 }}
